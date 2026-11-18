@@ -1,0 +1,8 @@
+# 打包产物（ghost_forge_pack 生成），不入库
+*.cindy
+
+# 依赖与临时文件
+node_modules/
+tmp/
+.DS_Store
+*.log

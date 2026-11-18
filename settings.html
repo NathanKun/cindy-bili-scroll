@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;padding:12px;font:13px/1.6 var(--font-sans,system-ui,-apple-system,"Segoe UI",sans-serif);color:inherit}
+  nav{display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap}
+  nav button{font:inherit;color:inherit;background:var(--surface-2,rgba(127,127,127,.1));border:1px solid var(--border-default,rgba(127,127,127,.28));border-radius:999px;padding:5px 13px;min-height:32px;cursor:pointer}
+  nav button[aria-selected="true"]{background:var(--text-primary,CanvasText);color:var(--background-primary,Canvas);border-color:transparent}
+  fieldset{border:0;margin:0;padding:0;display:grid;gap:12px}
+  fieldset[hidden]{display:none}
+  .row{display:grid;gap:4px;min-width:0}
+  .row.inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  label{font-weight:600}
+  .hint{margin:0;font-size:12px;opacity:.68}
+  input[type=text],input[type=number],textarea,select{font:inherit;color:inherit;background:var(--surface-1,rgba(127,127,127,.06));border:1px solid var(--border-default,rgba(127,127,127,.3));border-radius:8px;padding:7px 9px;min-height:34px;width:100%;max-width:100%}
+  textarea{min-height:74px;resize:vertical;font-family:var(--font-mono,ui-monospace);font-size:12px}
+  input[type=number]{max-width:130px}
+  select{max-width:260px}
+  .grid2{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+  footer{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+  button.primary{font:inherit;color:var(--background-primary,#fff);background:var(--text-primary,#111);border:1px solid transparent;border-radius:8px;padding:7px 16px;min-height:36px;cursor:pointer}
+  button.primary:disabled{opacity:.5;cursor:default}
+  button.ghost{font:inherit;color:inherit;background:transparent;border:1px solid var(--border-default,rgba(127,127,127,.3));border-radius:8px;padding:6px 12px;min-height:34px;cursor:pointer}
+  #status{margin:0;font-size:12px;opacity:.8}
+  .cookie-field input{font-family:var(--font-mono,ui-monospace);font-size:12px}
+  .tag{margin-left:6px;font-weight:400;font-size:11px;opacity:.62}
+  fieldset.group{border:1px solid var(--border-default,rgba(127,127,127,.24));border-radius:10px;padding:10px;gap:10px}
+  .segments{display:grid;gap:8px}
+  .seg{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .seg input[type=text]{width:88px;max-width:88px;text-align:center;font-family:var(--font-mono,ui-monospace);border-radius:8px}
+  .seg input[type=number]{width:64px;max-width:64px}
+  .seg .sep{opacity:.6}
+  .seg .del{font:inherit;color:inherit;background:transparent;border:1px solid var(--border-default,rgba(127,127,127,.3));border-radius:8px;padding:4px 10px;min-height:30px;cursor:pointer}
+  .seg-empty{margin:0;font-size:12px;opacity:.68}
+</style>
+</head>
+<body>
+<nav id="tabs">
+  <button type="button" data-tab="login" aria-selected="true">登录</button>
+  <button type="button" data-tab="daily" aria-selected="false">日常</button>
+  <button type="button" data-tab="prefs" aria-selected="false">偏好</button>
+  <button type="button" data-tab="engage" aria-selected="false">互动</button>
+  <button type="button" data-tab="advanced" aria-selected="false">高级</button>
+</nav>
+
+<fieldset id="pane-login" aria-label="登录">
+  <div class="row">
+    <p class="hint" id="loginState">正在查本机凭证…</p>
+    <div class="row inline">
+      <button type="button" class="ghost" id="loginVerify">核对一下</button>
+      <span class="hint" id="loginVerifyHint">核对会真的问一次 B站「这段凭证还认不认」，平时打开这一页不会。</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <label>扫码登录</label>
+    <div class="row inline">
+      <button type="button" class="ghost" id="qrStart">生成二维码</button>
+      <button type="button" class="ghost" id="qrCancel" hidden>取消</button>
+    </div>
+    <canvas id="qrCanvas" hidden role="img" aria-label="B站 登录二维码" style="max-width:180px;height:auto;border-radius:8px;image-rendering:pixelated"></canvas>
+    <p class="hint" id="qrHint">只有点了按钮才会去 B站 要二维码：不打开这一页、不点按钮，就不会调用任何登录接口。</p>
+  </div>
+
+  <div class="row">
+    <label>或者按名字填三个 Cookie</label>
+    <p class="hint"><strong>只粘值，不要带「名字=」</strong>：下面每一栏的名字是固定的，名字由插件拼回去。从浏览器 F12 → Application → Cookies（或 Network 里任一请求的 Cookie 头）逐个复制。</p>
+    <div class="row cookie-field">
+      <label for="cookieSessdata">SESSDATA <span class="tag">必需</span></label>
+      <input type="text" id="cookieSessdata" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="这一栏只填 SESSDATA 的值">
+    </div>
+    <div class="row cookie-field">
+      <label for="cookieJct">bili_jct <span class="tag">要评论 / 收藏 / 私信就填</span></label>
+      <input type="text" id="cookieJct" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="这一栏只填 bili_jct 的值">
+    </div>
+    <div class="row cookie-field">
+      <label for="cookieUid">DedeUserID <span class="tag">可选</span></label>
+      <input type="text" id="cookieUid" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="这一栏只填 DedeUserID 的值（纯数字）">
+    </div>
+    <p class="hint">整段请求头也可以直接粘进任意一栏：插件会认出里面的三个名字，自动分到各自的栏里（粘完可以核对一下再提交）。</p>
+    <p class="hint">这些值只交给本机插件——先问 B站「这是谁」，认得过才落盘。不进对话、不回显、提交后三栏立刻清空。</p>
+    <div class="row inline">
+      <button type="button" class="ghost" id="cookieSubmit">用这三个值登录</button>
+      <button type="button" class="ghost" id="cookieClear">清空</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="row inline">
+      <button type="button" class="ghost" id="logout">退出登录</button>
+    </div>
+    <p class="hint" id="logoutHint">清掉本机的凭证文件（credential.json）。要点两次才执行。</p>
+  </div>
+
+  <p class="hint">没有 bili_jct 的话只能刷、不能评论 / 收藏 / 发私信；没有 buvid3 插件会自己取一个。</p>
+</fieldset>
+
+<fieldset id="pane-daily" aria-label="日常" hidden>
+  <div class="row">
+    <label for="keywords">关键词（一行一个，留空就刷首页推荐）</label>
+    <textarea id="keywords" placeholder="星舰&#10;编译器原理"></textarea>
+    <p class="hint">填了就按关键词搜索，一轮只搜一个词；留空则刷你这个账号的首页推荐流。</p>
+  </div>
+  <div class="row">
+    <label for="excludeWords">排除词（一行一个）</label>
+    <textarea id="excludeWords" placeholder="带货&#10;直播切片"></textarea>
+    <p class="hint">标题、UP 主名或简介里出现这些词的视频会被直接过滤掉。</p>
+  </div>
+  <div class="row">
+    <label for="perDay">每天最多挑几条</label>
+    <input type="number" id="perDay" min="0" max="40" step="1">
+    <p class="hint">所有时段加起来一天最多挑几条。0 表示不自动限流。</p>
+  </div>
+  <div class="row">
+    <label for="reportLevel">日报形态</label>
+    <select id="reportLevel">
+      <option value="full">完整（每条一段）</option>
+      <option value="brief">简短（每条一两行）</option>
+      <option value="off">不写日报</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>时段配额（每一段各自计数，互不吃额度）</label>
+    <div id="segmentList" class="segments"></div>
+    <div class="row inline">
+      <button type="button" class="ghost" id="segmentAdd">加一段</button>
+      <button type="button" class="ghost" id="segmentPreset">早晚各一轮</button>
+    </div>
+    <p class="hint">每段 = 一天之内的一个时段 + 这一段最多跑几轮。几点敲由你自己的自动化任务决定（cron），插件只在这一段里放行、按这一段记账：早上那段跑满了，晚上那段照样有自己的额度。时段左闭右开（06:00–10:00 含 06:00、不含 10:00），不跨零点——要跨到第二天就拆成两段。时刻按这台电脑的本地时区算。这一套只约束「刷视频」；回复别人的检查有自己的次数与间隔（见「互动」页签），两条车道共用一条自动化任务。</p>
+  </div>
+</fieldset>
+
+<fieldset id="pane-prefs" aria-label="偏好" hidden>
+  <div class="grid2">
+    <div class="row">
+      <label for="searchSort">搜索排序</label>
+      <select id="searchSort">
+        <option value="pubdate">最新发布</option>
+        <option value="totalrank">综合排序</option>
+        <option value="click">播放最多</option>
+        <option value="dm">弹幕最多</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="searchPages">搜索页数</label>
+      <input type="number" id="searchPages" min="1" max="5" step="1">
+    </div>
+    <div class="row">
+      <label for="fetchPerRound">一轮最多细看几条</label>
+      <input type="number" id="fetchPerRound" min="1" max="30" step="1">
+      <p class="hint">读字幕是最贵的步骤，这个数字决定一轮的模型花费。</p>
+    </div>
+    <div class="row">
+      <label for="manualMax">手动一轮最多挑几条</label>
+      <input type="number" id="manualMax" min="1" max="20" step="1">
+    </div>
+    <div class="row">
+      <label for="manualCooldownMin">手动两次间隔（分钟）</label>
+      <input type="number" id="manualCooldownMin" min="0" max="240" step="1">
+    </div>
+    <div class="row">
+      <label for="favFolderId">收藏夹（留 0 不收藏）</label>
+      <input type="text" id="favFolderId" list="favFolderList" inputmode="numeric" autocomplete="off" placeholder="点这里选，或直接填 ID">
+      <datalist id="favFolderList"></datalist>
+      <p class="hint">下拉里是上次同步到的收藏夹（打开一次卡片「卡片」页签，或在聊天里说一句「刷B站 看设置」就会刷新）。也可以直接填 ID：B站 收藏页地址里 fid= 后面的数字。</p>
+    </div>
+  </div>
+</fieldset>
+
+<fieldset id="pane-engage" aria-label="互动" hidden>
+  <div class="row inline"><input type="checkbox" id="autoComment"><label for="autoComment">每轮在挑中的视频下留一条评论</label></div>
+  <div class="grid2">
+    <div class="row">
+      <label for="commentPerRound">每轮最多评论几条</label>
+      <input type="number" id="commentPerRound" min="0" max="20" step="1">
+    </div>
+    <div class="row">
+      <label for="commentLength">评论长度</label>
+      <select id="commentLength">
+        <option value="short">短（一句）</option>
+        <option value="medium">中（两三句）</option>
+        <option value="long">长（一小段）</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="mentionName">评论里 @ 谁（昵称）</label>
+      <input type="text" id="mentionName" maxlength="40" placeholder="留空就不 @">
+      <p class="hint">写昵称即可，插件会保证「@昵称」中间没有空格（B站只认紧挨着的写法）。</p>
+    </div>
+    <div class="row">
+      <label for="dmMode">私信投递</label>
+      <select id="dmMode">
+        <option value="off">不发私信</option>
+        <option value="only">只在私信里发日报（不公开评论）</option>
+        <option value="both">评论 + 私信都发</option>
+      </select>
+      <p class="hint">选「只在私信里发」时，就算上面开了自动评论，插件也不会公开发评论。</p>
+    </div>
+    <div class="row">
+      <label for="dmPerDay">每天最多几条私信</label>
+      <input type="number" id="dmPerDay" min="0" max="5" step="1">
+      <p class="hint">每轮最多 1 条；这里是全天加起来的上限，默认 2。填 0 等于不发私信（只发评论）。</p>
+    </div>
+    <div class="row">
+      <label for="dmUid">私信发给（UID）</label>
+      <input type="number" id="dmUid" min="0" step="1">
+      <p class="hint">留 0 就按上面「@ 谁」的昵称去查；查不准请直接填 UID。一条私信 500 字上限，每轮最多一条，一天最多几条看上面那格。</p>
+    </div>
+  </div>
+  <fieldset class="group" aria-label="互动轮">
+    <div class="row inline"><input type="checkbox" id="replyToComments"><label for="replyToComments">允许回复别人在我评论下的追问</label></div>
+    <div class="grid2">
+      <div class="row">
+        <label for="inboxChecksPerDay">每天最多检查几次</label>
+        <input type="number" id="inboxChecksPerDay" min="0" max="48" step="1">
+        <p class="hint">0 = 不自动检查。回复有自己的一套次数与间隔，跟刷视频的轮次完全无关——刷视频的轮次用完了，照样能来检查回复。两者共用同一条自动化任务（见 README「自动运行」）。</p>
+      </div>
+      <div class="row">
+        <label for="inboxMinGapMin">两次检查至少隔几分钟</label>
+        <input type="number" id="inboxMinGapMin" min="0" max="720" step="1">
+      </div>
+      <div class="row">
+        <label for="replyPerRound">每次检查最多回复几条</label>
+        <input type="number" id="replyPerRound" min="0" max="5" step="1">
+      </div>
+      <div class="row">
+        <label for="replyPerDay">每天最多回复几条</label>
+        <input type="number" id="replyPerDay" min="0" max="40" step="1">
+        <p class="hint">账号安全上限，0 = 不限。建议保持在个位数。</p>
+      </div>
+    </div>
+    <p class="hint">一次检查 = 拉一次收件箱 → 挑值得回的 → 收尾。收件箱是空的时候这一次会立刻收尾、不回复任何东西。它和日报轮共用<strong>同一条自动化任务</strong>（挂 <code>schedule/precheck.mjs</code>）：这一拍做刷视频还是回回复，由插件按两边各自的额度决定，互不吃额度。设置改完点保存会立刻同步给那条任务的前置检查脚本。</p>
+  </fieldset>
+  <p class="hint">这些开关打开之后，定时任务到点会直接用你本人的账号发出，<strong>不会再逐次问你</strong>——没人看着的凌晨那一轮是没法回答确认框的。所以真正的上限都在上面：开关本身、每轮 / 每天的条数、风格闸门、同一视频只评论一次。随时把开关关掉就会立刻停下。</p>
+</fieldset>
+
+<fieldset id="pane-advanced" aria-label="高级" hidden>
+  <div class="row">
+    <label for="personaPrompt">写评论时的口吻提示（可选）</label>
+    <textarea id="personaPrompt" maxlength="2000" placeholder="例如：理工科口吻，别夸张，不用感叹号。"></textarea>
+  </div>
+  <div class="row">
+    <p class="hint">登录凭证存在插件自己的数据目录里（不在这个设置里，也不进聊天）。要退出登录，在聊天里说「退出 B站 登录」，Cindy 会清掉本机凭证并让你确认。</p>
+    <p class="hint">日报写在插件数据目录的 out/&lt;日期&gt;.md，判重表在同目录的 seen.jsonl。</p>
+    <p class="hint">这里的改动还会镜像到 <code>%APPDATA%\Cindy\duty\cindy-bili-scroll\</code>，给自动任务的前置检查脚本判断「现在该不该跑」。点保存时插件会被叫起来同步一次，保存后的提示会说成没成；万一插件没醒，在聊天里说一句「刷B站 看设置」也会重写一遍。</p>
+  </div>
+  <footer>
+    <button type="button" class="ghost" id="reset">恢复默认值</button>
+  </footer>
+</fieldset>
+
+<footer>
+  <button type="button" class="primary" id="save">保存设置</button>
+  <p id="status" role="status"></p>
+</footer>
+
+<script src="/ui/qrcode.js"></script>
+<script src="/settings.js"></script>
+</body>
+</html>

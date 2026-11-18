@@ -1,0 +1,36 @@
+Third-party notices for the cindy-bili-scroll plugin
+===============================================
+
+qrcode-generator 1.4.4
+----------------------
+Shipped as ui/qrcode.js and loaded by the settings page to draw the Bilibili
+login QR code without contacting any external service.
+The interactive card (ui/page.html) does not use it.
+
+Copyright (c) 2009 Kazuhiko Arase
+URL: https://github.com/kazuhikoarase/qrcode-generator
+Licensed under the MIT License:
+  http://www.opensource.org/licenses/mit-license.php
+
+The word 'QR Code' is a registered trademark of DENSO WAVE INCORPORATED:
+  http://www.denso-wave.com/qrcode/faqpatent-e.html
+
+
+dsh-bili-scroll
+---------------
+This plugin is a Cindy port of https://github.com/c1overzz/dsh-bili-scroll,
+which is distributed under the MIT License. The daily-report format, the seen
+ledger, the peak-valley window logic and the comment style gate follow that
+project's design.
+
+
+bilibili-api-python (reference only, no code shipped)
+-----------------------------------------------------
+API request shapes (WBI signing order, form fields for the comment, favorite
+and DM endpoints) were copied from bilibili-api-python 17.4.2
+(data/api/*.json and bilibili_api/*.py). No Python code from that project is
+included in this package; only the wire format of the public Bilibili web API
+is reproduced. That project is MIT licensed.
+
+The storyboard/videoshot endpoint is referenced by URL only: no request
+function, no sprite geometry and no frame extraction is implemented here.

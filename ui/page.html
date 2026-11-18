@@ -1,0 +1,549 @@
+<!--
+  这是生成文件，不要直接改它：改 ui/page.template.html，再跑 tools/build-page.cjs 重新生成。
+-->
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>刷B站</title>
+<style>
+:root{color-scheme:light dark}
+*{box-sizing:border-box}
+body{margin:0;padding:16px;font:14px/1.65 var(--font-sans,system-ui,-apple-system,"Segoe UI",sans-serif);color:var(--color-text-primary,CanvasText);background:var(--color-background-primary,Canvas)}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-size:16px;font-weight:600}
+.meta{margin:0;font-size:12px;opacity:.7;overflow-wrap:anywhere}
+nav{display:flex;gap:6px;margin:12px 0;flex-wrap:wrap}
+nav button{font:inherit;color:inherit;background:var(--color-background-secondary,rgba(127,127,127,.12));border:1px solid var(--color-border-primary,rgba(127,127,127,.3));border-radius:999px;padding:6px 14px;min-height:34px;cursor:pointer}
+nav button[aria-selected="true"]{background:var(--color-text-primary,CanvasText);color:var(--color-background-primary,Canvas);border-color:transparent}
+button:disabled{opacity:.5;cursor:default}
+select,button.act{font:inherit;color:inherit;background:var(--color-background-secondary,rgba(127,127,127,.12));border:1px solid var(--color-border-primary,rgba(127,127,127,.3));border-radius:8px;padding:6px 10px;min-height:34px}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.report{font-size:13px}
+.report h2{font-size:15px;margin:0 0 10px}
+.report h3{font-size:13px;margin:16px 0 4px;font-family:var(--font-mono,ui-monospace);letter-spacing:.02em}
+.report p{margin:.35em 0}
+.report ul{margin:.3em 0 .6em;padding-left:1.2em}
+.report code{font-family:var(--font-mono,ui-monospace);font-size:12px;background:rgba(127,127,127,.16);border-radius:4px;padding:1px 4px}
+.report a{color:inherit;text-decoration:underline;overflow-wrap:anywhere}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--color-border-primary,rgba(127,127,127,.2));vertical-align:top;overflow-wrap:anywhere}
+th{font-weight:600;opacity:.7}
+td.bv{font-family:var(--font-mono,ui-monospace);white-space:nowrap}
+td.note{color:var(--text-secondary,#666);font-size:12px;min-width:180px}
+td a{color:inherit}
+.tag{display:inline-block;padding:1px 6px;border:1px solid currentColor;border-radius:6px;font-size:11px;white-space:nowrap}
+.qr{display:flex;flex-direction:column;align-items:center;gap:10px;padding:8px 0 4px}
+.qr canvas{background:#fff;border-radius:10px;padding:6px;width:216px;height:216px}
+.empty{opacity:.7;font-size:13px;padding:8px 0}
+.cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.card{display:flex;flex-direction:column;border:1px solid var(--color-border-primary,rgba(127,127,127,.28));border-radius:10px;overflow:hidden;background:var(--color-background-secondary,rgba(127,127,127,.06))}
+.card .thumb{width:100%;aspect-ratio:16/9;display:block;object-fit:cover;background:rgba(127,127,127,.14)}
+.card .txt{padding:8px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.card h4{margin:0;font-size:13px;font-weight:600;line-height:1.4;overflow-wrap:anywhere}
+.card .why{margin:0;font-size:12px;opacity:.78;white-space:pre-wrap;overflow-wrap:anywhere}
+.card .line{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;opacity:.72}
+.card a.open{font-size:12px;color:inherit;text-decoration:underline}
+.chip{font:inherit;font-size:12px;color:inherit;background:transparent;border:1px solid var(--color-border-primary,rgba(127,127,127,.3));border-radius:999px;padding:4px 10px;min-height:28px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--color-text-primary,CanvasText);color:var(--color-background-primary,Canvas);border-color:transparent}
+.pager{display:flex;gap:8px;align-items:center;font-size:12px;margin-top:12px}
+.folders{margin-top:18px;font-size:12px}
+.folders summary{cursor:pointer;font-size:12px;opacity:.8}
+.folders ul{margin:8px 0 0;padding-left:1.2em}
+.folders li{margin:2px 0}
+.folders .cur{font-weight:600}
+</style>
+</head>
+<body>
+<header>
+  <h1>刷B站</h1>
+  <p class="meta" id="meta">正在连接…</p>
+</header>
+<nav id="tabs">
+  <button type="button" data-tab="report" aria-selected="true">日报</button>
+  <button type="button" data-tab="cards" aria-selected="false">卡片</button>
+  <button type="button" data-tab="library" aria-selected="false">判重表</button>
+</nav>
+<main id="body"></main>
+<p class="meta" id="status" role="status"></p>
+
+<script type="module">
+import { App } from '@modelcontextprotocol/ext-apps';
+
+const app = new App({ name: '刷B站', version: '1.6.4' }, {}, { autoResize: true });
+const LONG = { timeout: 30 * 60 * 1000, maxTotalTimeout: 30 * 60 * 1000 };
+const lifetime = new AbortController();
+
+const elTabs = document.querySelector('#tabs');
+const elBody = document.querySelector('#body');
+const elMeta = document.querySelector('#meta');
+const elStatus = document.querySelector('#status');
+
+const state = {
+  tab: 'report',
+  report: null,
+  library: null,
+  cards: null,
+  cardView: { verdict: '全部', query: '', page: 1 },
+  gotResult: false,
+};
+
+function setStatus(text) {
+  elStatus.textContent = text || '';
+}
+
+function esc(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
+}
+
+function inline(escaped) {
+  return escaped
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/(https?:\/\/[^\s<)]+)/g, '<a href="$1" rel="noreferrer">$1</a>');
+}
+
+/* 只渲染我们自己的日报格式：先整体转义，再补固定标签，动态文本永不进 innerHTML。 */
+function renderMarkdown(text, container) {
+  const lines = String(text || '').split('\n');
+  const out = [];
+  let listOpen = false;
+  const closeList = () => { if (listOpen) { out.push('</ul>'); listOpen = false; } };
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, '');
+    if (!line.trim()) { closeList(); continue; }
+    if (/^#\s+/.test(line)) { closeList(); out.push('<h2>' + inline(esc(line.replace(/^#\s+/, ''))) + '</h2>'); continue; }
+    if (/^###\s+/.test(line)) { closeList(); out.push('<h3>' + inline(esc(line.replace(/^###\s+/, ''))) + '</h3>'); continue; }
+    if (/^##\s+/.test(line)) { closeList(); out.push('<h2>' + inline(esc(line.replace(/^##\s+/, ''))) + '</h2>'); continue; }
+    if (/^[-*]\s+/.test(line)) {
+      if (!listOpen) { out.push('<ul>'); listOpen = true; }
+      out.push('<li>' + inline(esc(line.replace(/^[-*]\s+/, ''))) + '</li>');
+      continue;
+    }
+    closeList();
+    out.push('<p>' + inline(esc(line)) + '</p>');
+  }
+  closeList();
+  container.innerHTML = out.join('');
+}
+
+function tabButton(name) {
+  for (const button of elTabs.querySelectorAll('button')) {
+    button.setAttribute('aria-selected', button.dataset.tab === name ? 'true' : 'false');
+  }
+}
+
+function renderReport(payload) {
+  elBody.replaceChildren();
+  const data = payload || state.report || {};
+  const bar = document.createElement('div');
+  bar.className = 'bar';
+
+  const quota = data.quota || {};
+  const info = document.createElement('span');
+  info.className = 'meta';
+  info.textContent = '今天 ' + (data.date || '') + ' 挑了 ' + (data.selected || 0) + ' 条'
+    + (quota.perDay ? ' / 每日上限 ' + quota.perDay + ' 条' : '')
+    + (data.reportLevel ? ' · 日报形态 ' + data.reportLevel : '');
+  bar.append(info);
+
+  if (Array.isArray(data.dates) && data.dates.length > 1) {
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', '选择日期');
+    for (const day of data.dates) {
+      const option = document.createElement('option');
+      option.value = day;
+      option.textContent = day;
+      if (day === data.date) option.selected = true;
+      select.append(option);
+    }
+    select.onchange = () => loadReport(select.value);
+    bar.append(select);
+  }
+  elBody.append(bar);
+
+  const container = document.createElement('div');
+  container.className = 'report';
+  if (data.report && String(data.report).trim()) {
+    renderMarkdown(data.report, container);
+  } else {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = data.reportUnavailable
+      ? '读不到这一天的日报（本机读盘失败）。这不是「还没写」——文件可能就在盘上，稍后再打开一次。'
+      : '这一天还没有日报。让 Cindy 跑一轮就会写到这里。';
+    container.append(empty);
+  }
+  elBody.append(container);
+  elMeta.textContent = '日报 · ' + (data.date || '');
+}
+
+function renderLibrary(payload) {
+  elBody.replaceChildren();
+  const data = payload || state.library || {};
+  const entries = Array.isArray(data.entries) ? data.entries : [];
+  const quota = data.quota || {};
+
+  const bar = document.createElement('div');
+  bar.className = 'bar';
+  const info = document.createElement('span');
+  info.className = 'meta';
+  info.textContent = data.seenUnavailable
+    ? '判重表读不到（本机读盘失败），下面的条数不代表真实情况'
+    : '判重表最近 ' + entries.length + ' 条 · 今天已挑 ' + (quota.used || 0)
+      + (quota.perDay ? ' / ' + quota.perDay : '');
+  bar.append(info);
+  elBody.append(bar);
+
+  if (!entries.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = data.seenUnavailable
+      ? '读不到判重表（本机读盘失败）。这不是「什么都没刷过」，稍后再打开一次。'
+      : '还没有记录。跑一轮之后，看过的视频都会记在这里。';
+    elBody.append(empty);
+    elMeta.textContent = '判重表';
+    return;
+  }
+
+  const table = document.createElement('table');
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const label of ['日期', '状态', 'BV 号', '标题', '当时的判断']) {
+    const th = document.createElement('th');
+    th.textContent = label;
+    headRow.append(th);
+  }
+  head.append(headRow);
+  table.append(head);
+
+  const body = document.createElement('tbody');
+  for (const entry of entries) {
+    const row = document.createElement('tr');
+    const day = document.createElement('td');
+    day.textContent = entry.day || '';
+    const status = document.createElement('td');
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = entry.status || '';
+    status.append(tag);
+    const bv = document.createElement('td');
+    bv.className = 'bv';
+    const link = document.createElement('a');
+    link.href = 'https://www.bilibili.com/video/' + String(entry.bvid || '');
+    link.rel = 'noreferrer';
+    link.textContent = entry.bvid || '';
+    bv.append(link);
+    const title = document.createElement('td');
+    title.textContent = entry.title || '';
+    // 模型每轮写给自己的那条笔记：这是「记忆」在界面上唯一可见的地方。
+    const note = document.createElement('td');
+    note.className = 'note';
+    note.textContent = entry.note || '';
+    row.append(day, status, bv, title, note);
+    body.append(row);
+  }
+  table.append(body);
+  elBody.append(table);
+  elMeta.textContent = '判重表';
+}
+
+const PAGE_SIZE = 12;
+const VERDICTS = ['全部', '值得看', '可以看', '不值当'];
+
+function cardFilter(card, view) {
+  if (view.verdict !== '全部' && card.verdict !== view.verdict) return false;
+  const query = String(view.query || '').trim().toLowerCase();
+  if (!query) return true;
+  return (String(card.title || '') + ' ' + String(card.up || '') + ' ' + card.bvid).toLowerCase().includes(query);
+}
+
+/** 卡片墙：封面 + 档位筛选 + 搜索 + 分页；收藏夹只读列出来（改在插件设置页）。 */
+function renderCards(payload) {
+  const data = payload || state.cards || {};
+  const all = Array.isArray(data.cards) ? data.cards : [];
+  const view = state.cardView;
+  const filtered = all.filter((card) => cardFilter(card, view));
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if (view.page > pages) view.page = pages;
+  const start = (view.page - 1) * PAGE_SIZE;
+  const shown = filtered.slice(start, start + PAGE_SIZE);
+
+  elBody.replaceChildren();
+
+  const bar = document.createElement('div');
+  bar.className = 'bar';
+  const info = document.createElement('span');
+  info.className = 'meta';
+  info.textContent = (data.date || '') + ' · 共 ' + all.length + ' 张卡片'
+    + (filtered.length !== all.length ? '（筛出 ' + filtered.length + ' 张）' : '');
+  bar.append(info);
+  elBody.append(bar);
+
+  const filters = document.createElement('div');
+  filters.className = 'bar';
+  for (const verdict of VERDICTS) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    chip.textContent = verdict;
+    chip.setAttribute('aria-pressed', view.verdict === verdict ? 'true' : 'false');
+    chip.onclick = () => {
+      view.verdict = verdict;
+      view.page = 1;
+      renderCards();
+    };
+    filters.append(chip);
+  }
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.placeholder = '搜标题 / UP / BV';
+  search.value = view.query;
+  search.setAttribute('aria-label', '搜索卡片');
+  search.style.maxWidth = '200px';
+  search.oninput = () => {
+    view.query = search.value;
+    view.page = 1;
+    renderCards();
+  };
+  filters.append(search);
+  elBody.append(filters);
+
+  if (!shown.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = all.length
+      ? '这个筛选下没有卡片。'
+      : (data.reportUnavailable
+        ? '读不到这一天的日报（本机读盘失败），不是「还没有卡片」。稍后再打开一次。'
+        : '这一天还没有卡片。日报里每写一条 `### BV…`，这里就多一张卡。');
+    elBody.append(empty);
+  } else {
+    const grid = document.createElement('div');
+    grid.className = 'cards';
+    for (const card of shown) grid.append(makeCard(card));
+    elBody.append(grid);
+  }
+
+  if (pages > 1) {
+    const pager = document.createElement('div');
+    pager.className = 'pager';
+    const prev = document.createElement('button');
+    prev.type = 'button';
+    prev.className = 'chip';
+    prev.textContent = '上一页';
+    prev.disabled = view.page <= 1;
+    prev.onclick = () => { view.page -= 1; renderCards(); };
+    const next = document.createElement('button');
+    next.type = 'button';
+    next.className = 'chip';
+    next.textContent = '下一页';
+    next.disabled = view.page >= pages;
+    next.onclick = () => { view.page += 1; renderCards(); };
+    const label = document.createElement('span');
+    label.className = 'meta';
+    label.textContent = '第 ' + view.page + ' / ' + pages + ' 页';
+    pager.append(prev, label, next);
+    elBody.append(pager);
+  }
+
+  const folders = document.createElement('details');
+  folders.className = 'folders';
+  const summary = document.createElement('summary');
+  summary.textContent = '收藏夹' + (data.favFolderId ? '（当前目标 id ' + data.favFolderId + '）' : '（还没设目标）');
+  folders.append(summary);
+  if (Array.isArray(data.folders) && data.folders.length) {
+    const list = document.createElement('ul');
+    for (const folder of data.folders) {
+      const item = document.createElement('li');
+      item.textContent = folder.title + ' · ' + (folder.count || 0) + ' 个 · id ' + folder.id;
+      if (Number(folder.id) === Number(data.favFolderId)) item.className = 'cur';
+      list.append(item);
+    }
+    folders.append(list);
+  } else {
+    const note = document.createElement('p');
+    note.className = 'meta';
+    note.textContent = data.foldersError ? ('读不到收藏夹：' + data.foldersError) : '没有读到收藏夹。';
+    folders.append(note);
+  }
+  elBody.append(folders);
+  elMeta.textContent = '卡片 · ' + (data.date || '');
+}
+
+function makeCard(card) {
+  const box = document.createElement('article');
+  box.className = 'card';
+  if (card.cover) {
+    const img = document.createElement('img');
+    img.className = 'thumb';
+    img.src = String(card.cover).replace(/^http:/, 'https:');
+    img.alt = card.title || card.bvid;
+    img.loading = 'lazy';
+    img.referrerPolicy = 'no-referrer';
+    // 封面是第三方图床，可能被拦住；拦住了就不留一个破图框。
+    img.onerror = () => img.remove();
+    box.append(img);
+  }
+  const text = document.createElement('div');
+  text.className = 'txt';
+
+  const title = document.createElement('h4');
+  title.textContent = card.title || card.bvid;
+  text.append(title);
+
+  if (card.verdict) {
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = card.verdict;
+    text.append(tag);
+  }
+
+  const line = document.createElement('div');
+  line.className = 'line';
+  line.textContent = [card.up, card.duration, card.views].filter(Boolean).join(' · ');
+  if (line.textContent) text.append(line);
+
+  if (card.body) {
+    const why = document.createElement('p');
+    why.className = 'why';
+    why.textContent = String(card.body).slice(0, 400);
+    text.append(why);
+  }
+
+  const link = document.createElement('a');
+  link.className = 'open';
+  link.href = card.link || ('https://www.bilibili.com/video/' + card.bvid);
+  link.rel = 'noreferrer';
+  link.textContent = '打开 ↗';
+  text.append(link);
+
+  box.append(text);
+  return box;
+}
+
+function render() {
+  tabButton(state.tab);
+  if (state.tab === 'cards') return renderCards(null);
+  if (state.tab === 'library') return renderLibrary(null);
+  return renderReport(null);
+}
+
+async function loadCards(date) {
+  setStatus('正在整理卡片…');
+  try {
+    const args = { kind: 'cards' };
+    if (date) args.date = date;
+    const result = await callTool('view_data', args);
+    state.cards = result.structuredContent || {};
+    state.cardView.page = 1;
+    state.tab = 'cards';
+    render();
+    setStatus('');
+  } catch (error) {
+    setStatus(error.message || '读卡片失败');
+  }
+}
+
+async function loadReport(date) {
+  setStatus('正在读日报…');
+  try {
+    const args = { kind: 'report' };
+    if (date) args.date = date;
+    const result = await callTool('view_data', args);
+    state.report = Object.assign({}, result.structuredContent || {}, { date: date || (result.structuredContent || {}).date });
+    state.tab = 'report';
+    render();
+    setStatus('');
+  } catch (error) {
+    setStatus(error.message || '读日报失败');
+  }
+}
+
+async function loadLibrary() {
+  setStatus('正在读判重表…');
+  try {
+    const result = await callTool('view_data', { kind: 'library' });
+    state.library = result.structuredContent || {};
+    render();
+    setStatus('');
+  } catch (error) {
+    setStatus(error.message || '读判重表失败');
+  }
+}
+
+async function callTool(name, args) {
+  const result = await app.callServerTool({ name, arguments: args }, Object.assign({ signal: lifetime.signal }, LONG));
+  if (result.isError) {
+    const text = (result.content || []).find((item) => item.type === 'text');
+    throw new Error((text && text.text) || '操作未完成');
+  }
+  return result;
+}
+
+function applyPayload(payload) {
+  if (!payload) return;
+  if (payload.intent === 'cards') {
+    state.tab = 'cards';
+    state.cards = payload;
+    state.cardView.page = 1;
+  } else if (payload.intent === 'library') {
+    state.tab = 'library';
+    state.library = payload;
+  } else if (payload.intent === 'report') {
+    state.tab = 'report';
+    state.report = payload;
+  }
+  render();
+}
+
+elTabs.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-tab]');
+  if (!button) return;
+  const tab = button.dataset.tab;
+  if (tab === state.tab) return;
+  state.tab = tab;
+  tabButton(tab);
+  if (tab === 'library' && !state.library) return loadLibrary();
+  if (tab === 'cards') {
+    state.tab = 'cards';
+    tabButton('cards');
+    return loadCards(state.report && state.report.date);
+  }
+  render();
+});
+
+app.ontoolresult = (result) => {
+  state.gotResult = true;
+  if (result && result.structuredContent) applyPayload(result.structuredContent);
+};
+app.onhostcontextchanged = () => {
+  const context = app.getHostContext() || {};
+  if (context.theme) document.documentElement.style.colorScheme = context.theme;
+};
+app.onteardown = async () => {
+  // 只有一个悬着的长调用在等扫码，abort 它就够了
+  lifetime.abort();
+  return {};
+};
+
+try {
+  await app.connect();
+  const context = app.getHostContext() || {};
+  if (context.theme) document.documentElement.style.colorScheme = context.theme;
+  elMeta.textContent = '';
+  window.setTimeout(() => {
+    if (state.gotResult) return;
+    loadReport();
+  }, 500);
+} catch (error) {
+  elMeta.textContent = '';
+  setStatus('无法连接，请确认 Cindy 版本后重新打开这张卡片。');
+}
+</script>
+</body>
+</html>

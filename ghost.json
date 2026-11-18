@@ -1,0 +1,744 @@
+{
+  "schemaVersion": 3,
+  "minCindyVersion": "0.1.136",
+  "id": "cindy-bili-scroll",
+  "name": "刷B站",
+  "description": "按你的设置替你刷 B站：**刷视频轮**刷首页推荐或按关键词搜索、读字幕挑出值得看的视频、写一份 Markdown 日报（可选留一条评论并 @ 你、收藏、私信投递，并复核评论是否公开可见）；**回复轮**只处理谁回复了你、谁 @ 了你。两者共用**一条自动化任务**：定时到点由前置检查脚本判「这一拍有没有活」，插件再判做哪件——时段配额管刷视频，检查次数与最小间隔管回复，两套额度互不吃。卡片页把日报变成带封面的卡片墙，登录用扫码或粘贴浏览器 Cookie。",
+  "whenToUse": "需要替我在 B站上刷一轮（首页推荐或按关键词搜索）、读字幕判断视频值不值得看、写一份每日 B站 日报、按早晚时段分配每天刷几轮、回复别人在我评论下的追问与 @、用卡片墙回看挑过的视频、记录刷过哪些视频、按设置评论 @ 我 / 收藏 / 私信投递、复核评论是否可见，或查看与整理 B站 日报和判重记录时找我。",
+  "version": "1.6.4",
+  "entry": "main.js",
+  "command": "刷B站",
+  "settingsHtml": "settings.html",
+  "settingsHeight": 640,
+  "readme": {
+    "en": "README.md",
+    "zh-CN": "README.zh-CN.md"
+  },
+  "fs": true,
+  "agent": {
+    "schedule": true
+  },
+  "network": {
+    "hosts": [
+      "*.bilibili.com",
+      "*.hdslb.com"
+    ]
+  },
+  "node": {
+    "entry": "node/worker.cjs",
+    "protocol": "json-rpc-stdio",
+    "lifecycle": "on-demand",
+    "idleTimeoutSeconds": 120
+  },
+  "tools": [
+    {
+      "name": "bili_round",
+      "description": "每一轮的开始与结束都走这里，也是自动运行的第一步。action=start（缺省）返回 mode，告诉这一拍做什么：mode=report 时给出这一轮允许做什么——每日剩余额度、可用的评论/收藏/私信条数、当前时段还剩几轮（时段配额按段独立计算）、你的设置、判重表最近记录、memory（你以前对看过的视频写的笔记，按条和按 UP 各一份），以及这一轮的章程（charter）；mode=inbox 时说明这一拍该做回复，插件已经替你打开了这次检查（inboxId、条目、回复额度、互动章程都在返回里），照章程只回复、最后 bili_inbox({action:\"finish\"}) 收尾，收件箱空则返回 nothing=true 且已经自动收尾；mode=none 时这一拍没有活，用一句话说明原因即止。返回 go=false 时必须本轮直接结束，不要做别的事。action=finish：结束这一轮，补占位日报、把本轮投递情况写进日报、把这一段这一次自动轮记成跑成并释放锁——不调用就不会被记为跑过；action=finish 只用于 mode=report 那一轮：start 返回的 roundId 请原样回传，否则锁过期后接管的那一轮会被你误收；mode=inbox 的那次检查没有 roundId，用 bili_inbox 的 action=finish（带 inboxId）收尾，不要拿 roundId 去调 finish。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "start",
+              "finish"
+            ],
+            "description": "start=开始一轮（缺省）；finish=这一轮收尾（自动任务里必须调）"
+          },
+          "roundId": {
+            "type": "string",
+            "description": "action=finish 时必填：把开头那次 bili_round 返回的 roundId 原样回传。不带会返回 round_required（现在有一轮在跑，硬收会把别人那一轮收掉）；带了一个对不上号的 token 会返回 round_mismatch 并拒绝收尾。"
+          },
+          "manual": {
+            "type": "boolean",
+            "description": "action=start 时：用户明确要求“现在就刷一轮”就传 true，跳过时段配额与每日额度检查，改用设置里的手动上限与冷却，也不占任何时段的自动轮次。一轮手动最多挑 manualMax 条、每天最多开 4 轮（超过返回 manual_capped）。定时任务不要传。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "nothing",
+              "error"
+            ],
+            "description": "action=finish 时：这一轮的结果。nothing=没什么值得看的；error=中途出错"
+          },
+          "note": {
+            "type": "string",
+            "description": "action=finish 时：一句话说明（会写进占位日报）。例如“因无字幕跳过 3 条”"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "approval": "auto"
+    },
+    {
+      "name": "bili_browse",
+      "description": "取候选视频列表。source=recommend 取这个账号的首页推荐流；source=search 按关键词搜索（设置里填了关键词时用这个，一轮只搜一个词）。返回的视频带 seen 字段：seen=true 表示判重表里已经出现过，本轮直接跳过。已经按设置的排除词过滤过。部分候选还带 note（你上次对这条视频的判断）与 upNote（你上次对这个 UP 的判断）——那是你自己的旧笔记，优先级高于标题和简介，但低于这一轮真读到的字幕。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "recommend",
+              "search"
+            ],
+            "description": "recommend=首页推荐流；search=按 keyword 搜索"
+          },
+          "keyword": {
+            "type": "string",
+            "description": "source=search 时的搜索词，必须给。用户原话里的关键词，不要自己扩写。"
+          },
+          "pages": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "source=search 时搜几页（每页 20 条），缺省用设置值"
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "pubdate",
+              "totalrank",
+              "click",
+              "dm"
+            ],
+            "description": "source=search 的排序：pubdate 最新 / totalrank 综合 / click 播放多 / dm 弹幕多。缺省用设置值"
+          },
+          "ps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 40,
+            "description": "source=recommend 取多少条，缺省 30"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "approval": "auto"
+    },
+    {
+      "name": "bili_detail",
+      "description": "取一个视频的详情并读字幕：标题、UP、时长、简介、播放/点赞/收藏、分P，以及字幕原文——字幕是判断值不值得看的唯一可信证据，不要只看标题和简介。subtitle=false 时只要表层信息（那种情况最多判断到“可以看”）。返回里 subtitle.available=false 且没有 failed 标记，表示这条视频没有字幕轨（不是工具坏了）：记“跳过（无字幕）”并在日报末尾统计，不要换参数反复重试。subtitle.failed=true 则是拉取失败，可以重试一次，不要统计成“无字幕”。顺带会把封面记下来，给卡片墙用。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "bvid": {
+            "type": "string",
+            "description": "BV 号，例如 BV1tKs76bEyi"
+          },
+          "subtitle": {
+            "type": "boolean",
+            "description": "是否连同字幕一起取，缺省 true。只想看表层信息时传 false。"
+          },
+          "maxChars": {
+            "type": "integer",
+            "minimum": 500,
+            "maximum": 60000,
+            "description": "字幕最多返回多少字，缺省 30000（约两小时的说话量）。超长时给的是「开头 + 结尾」，中间省略并在接缝处写明省了多少——不是只留开头。一般不用传。"
+          }
+        },
+        "required": [
+          "bvid"
+        ],
+        "additionalProperties": false
+      },
+      "approval": "auto"
+    },
+    {
+      "name": "bili_comments",
+      "description": "取视频的热门评论（含点赞数与部分楼中楼，楼中楼带 rpid）。用来判断观众在关心什么，也用来避免写出跟现有热评重复的评论。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "bvid": {
+            "type": "string",
+            "description": "BV 号"
+          },
+          "ps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "description": "取多少条，缺省 20"
+          }
+        },
+        "required": [
+          "bvid"
+        ],
+        "additionalProperties": false
+      },
+      "approval": "auto"
+    },
+    {
+      "name": "bili_report_append",
+      "description": "把一段日报追加到当天日报文件（插件私有目录 out/<日期>.md）。这一段的第一行必须顶格写成 `### BV号` —— 插件靠数这些标题行核对每日额度，只有真正挑中的视频才写。写过之后用返回的 selectedToday 核对今天是否超额度。设置里日报形态为 off 时本工具会拒绝写入，那种情况改在判重表里记“挑了”。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "要追加的 Markdown 片段：第一行 `### BV号`，之后写标题 / UP / 时长 / 播放量 / **档位**（值得看|可以看|不值当） / 为什么值得 / 你的一句话。第三项是**时长**（如 `18:32`）不是链接——卡片按这个位置取时长，写链接会显示在时长格子里；链接由插件按 BV 号自己拼。"
+          },
+          "roundId": {
+            "type": "string",
+            "description": "可选但强烈建议：开头那次 bili_round 返回的 roundId。带上它，插件才能确认这条写入属于哪一轮——如果你这一轮已经超时、锁被新一轮接管，调用会被拒（ROUND_MISMATCH），而不是把这条写入记到别人的账上。不带 roundId 时按当前在跑的那一轮记账（所以也会占那一轮的每轮额度）。"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "approval": "auto"
+    },
+    {
+      "name": "bili_seen",
+      "description": "读写判重表，也是这个插件唯一的长期记忆。不带 record 时读最近记录（判断哪些视频刷过；读不到会直接报错，不要当成“没刷过”，按章程这一轮不发评论）。带 record 时追加一条记录，每条看过的视频都要记，包括跳过的；日报形态为 off 时，“挑了”就是每日额度的唯一依据。record.note 是写给下一轮的你自己：这条讲了什么、为什么跳、这个 UP 的成色。下一轮 bili_round 的 memory 和 bili_browse 的 note/upNote 会把它带回来，所以笔记要具体到能据此复判。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "读的时候返回最近多少条，缺省 40"
+          },
+          "bvid": {
+            "type": "string",
+            "description": "读的时候只看某个 BV 号是否刷过（会查全表）"
+          },
+          "record": {
+            "type": "object",
+            "description": "写的时候传这个：{bvid, title, up, status, note}",
+            "properties": {
+              "bvid": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string",
+                "description": "视频标题（原样，不要改写）"
+              },
+              "up": {
+                "type": "string",
+                "description": "UP 主名字"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "挑了",
+                  "跳过",
+                  "评论"
+                ],
+                "description": "挑了=写进日报（日报形态 off 时也算额度）；跳过=看过但不值得；评论=发了评论（bili_comment 会自动记，不要重复记）"
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 200,
+                "description": "写给下一轮的你自己：这条讲了什么、为什么跳、这个 UP 的成色。要具体到能据此复判，不要写「一般」「还行」。下一轮 bili_round 的 memory 和 bili_browse 的 note/upNote 会把它带回来。"
+              }
+            },
+            "required": [
+              "bvid",
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          "roundId": {
+            "type": "string",
+            "description": "可选但强烈建议：开头那次 bili_round 返回的 roundId。带上它，插件才能确认这条写入属于哪一轮——如果你这一轮已经超时、锁被新一轮接管，调用会被拒（ROUND_MISMATCH），而不是把这条写入记到别人的账上。不带 roundId 时按当前在跑的那一轮记账（所以也会占那一轮的每轮额度）。"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "approval": "auto"
+    },
+    {
+      "name": "bili_comment",
+      "description": "在视频下发一条评论（用使用者本人的账号说话）。必须传 confirm=true 表示你已经确认设置与额度都允许；设置里「自动评论」必须是开着的，且这一轮的评论额度没用完；另外插件写死了一天最多 10 条（跨轮次的硬顶，超了回 COMMENT_DAY_BUDGET）。私信投递设成「只在私信里发」时不允许公开评论；互动轮里不允许发评论（回 INBOX_ONLY_TURN）。内容会被风格闸门检查：套话开头、跟历史评论或热评太像都会被拦下并返回 blocked_by=style，此时按原因改写一次，再被拦就不要发。评论发出后即使本地记账失败也会如实返回 sent=true —— 那种情况绝不重发。这一步不会另弹确认框：发出去就是以用户本人名义公开说话，拿不准就不要发。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "bvid": {
+            "type": "string",
+            "description": "BV 号"
+          },
+          "text": {
+            "type": "string",
+            "description": "评论正文：一句人话判断 + 一个只有看了这条视频才说得出的细节。要 @ 人就直接写 `@昵称`（中间不留空格，插件也会帮你规整）。不超过 150 字。"
+          },
+          "title": {
+            "type": "string",
+            "description": "视频标题，只用于记录"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "设置里「自动评论」开着、这一轮还有评论额度，才传 true。没有确认就不要调用本工具。"
+          },
+          "roundId": {
+            "type": "string",
+            "description": "可选但强烈建议：开头那次 bili_round 返回的 roundId。带上它，插件才能确认这条写入属于哪一轮——如果你这一轮已经超时、锁被新一轮接管，调用会被拒（ROUND_MISMATCH），而不是把这条写入记到别人的账上。不带 roundId 时按当前在跑的那一轮记账（所以也会占那一轮的每轮额度）。"
+          }
+        },
+        "required": [
+          "bvid",
+          "text",
+          "confirm"
+        ],
+        "additionalProperties": false
+      },
+      "approval": "auto"
+    },
+    {
+      "name": "bili_reply",
+      "description": "回复某条评论（用使用者本人的账号，楼中楼）。必须在一次互动轮里调用：先 bili_inbox({action:\"start\"}) 拿 inboxId 与回复额度，再把 inboxId 原样带上。必须传 confirm=true；设置里「允许回复别人的追问」开着、这一次检查的额度和今天的总额度都还有。bvid 与 rpid 从 bili_inbox 返回的条目里拿（条目给的是 aid，不是 bvid，直接用 aid 即可）。rpid / root 是 64 位整数，一律按字符串原样传（转成数字会丢精度、挂错楼）。回复楼中楼时把 root 传成你自己那条顶层评论的 id，对方才收得到通知。回复正文里不许出现 @（会给第三方发通知，回 REPLY_NO_MENTION）；有一次互动检查在跑却没带 inboxId 会被拒（回 INBOX_REQUIRED）。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "bvid": {
+            "type": "string",
+            "description": "这条评论所在的 BV 号（与 aid 二选一）"
+          },
+          "aid": {
+            "type": "string",
+            "description": "视频 aid（oid），字符串。从 bili_inbox 拿到的条目用它，不必再换成 bvid"
+          },
+          "rpid": {
+            "type": "string",
+            "description": "被回复的那条评论的 rpid，字符串，原样传"
+          },
+          "root": {
+            "type": "string",
+            "description": "楼中楼所属的顶层评论 rpid，字符串；回复顶层评论时留空即可"
+          },
+          "text": {
+            "type": "string",
+            "description": "回复正文，一句人话，不超过 100 字"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "设置里「允许回复追问」开着、这一次检查还有回复额度，才传 true。"
+          },
+          "inboxId": {
+            "type": "string",
+            "description": "这一次互动检查的 id：bili_inbox({action:\"start\"}) 返回的 inboxId，原样回传。额度按这一次检查记；对不上号（锁过期或被下一次检查接管）会返回 INBOX_MISMATCH，那是停手的信号。"
+          },
+          "roundId": {
+            "type": "string",
+            "description": "1.3.x 的旧写法（刷视频轮的 roundId），只为老任务兼容保留。现在刷视频轮不发放回复额度，带它调用会因为没有额度被拒——回复请走互动轮。"
+          }
+        },
+        "required": [
+          "rpid",
+          "text",
+          "confirm"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "bvid"
+            ]
+          },
+          {
+            "required": [
+              "aid"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      },
+      "approval": "auto"
+    },
+    {
+      "name": "bili_favorite",
+      "description": "把视频收进设置里指定的收藏夹（用使用者本人的账号）。必须传 confirm=true。额度写死在插件里：一轮最多 1 条、一天最多 8 条（超了回 FAVORITE_BUDGET / FAVORITE_DAY_BUDGET）；互动轮里不允许收藏（回 INBOX_ONLY_TURN）。设置里没选收藏夹就是关着的（传 folderId 参数不能代替设置里那个开关，会报 NO_FOLDER）；收藏夹 id 可以打开卡片页看「收藏夹」一节，或让用户看设置页。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "bvid": {
+            "type": "string",
+            "description": "BV 号"
+          },
+          "folderId": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "目标收藏夹 id，缺省用设置里的"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "确认这是设置里允许的收藏，才传 true。"
+          },
+          "roundId": {
+            "type": "string",
+            "description": "可选但强烈建议：开头那次 bili_round 返回的 roundId。带上它，插件才能确认这条写入属于哪一轮——如果你这一轮已经超时、锁被新一轮接管，调用会被拒（ROUND_MISMATCH），而不是把这条写入记到别人的账上。不带 roundId 时也按当前在跑的那一轮归日（收藏没有每轮额度）；只有带了一个对不上号的 roundId 才会被拒。"
+          }
+        },
+        "required": [
+          "bvid",
+          "confirm"
+        ],
+        "additionalProperties": false
+      },
+      "approval": "auto"
+    },
+    {
+      "name": "bili_dm",
+      "description": "给设置里配置的收件人发一条 B站 私信（日报投递）。必须传 confirm=true。正文最多 500 字（超了 B站 直接报 21007，插件会先拦下）。一轮只发一条，一天最多几条看设置「每天最多几条私信」（dmPerDay，默认 2，0 = 不发；超了回 DM_BUDGET）；互动轮里不允许发私信（回 INBOX_ONLY_TURN）。私信里不许 @ 人、不许出现设置名或内部术语。接口没回投递回执时返回 sent=false —— 那表示很可能没送到，不要当成已送达。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "私信正文（日报摘要，不要整篇复制），不超过 500 字"
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "收件人 UID，缺省用设置里的"
+          },
+          "name": {
+            "type": "string",
+            "description": "收件人昵称，没配 UID 时用它去查"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "确认这是设置里允许的私信投递，才传 true。"
+          },
+          "roundId": {
+            "type": "string",
+            "description": "可选但强烈建议：开头那次 bili_round 返回的 roundId。带上它，插件才能确认这条写入属于哪一轮——如果你这一轮已经超时、锁被新一轮接管，调用会被拒（ROUND_MISMATCH），而不是把这条写入记到别人的账上。不带 roundId 时按当前在跑的那一轮记账（所以也会占那一轮的每轮额度）。"
+          }
+        },
+        "required": [
+          "text",
+          "confirm"
+        ],
+        "additionalProperties": false
+      },
+      "approval": "auto"
+    },
+    {
+      "name": "bili_inbox",
+      "description": "B站 收件箱，也是「回复轮」的入口。不带 action：只读一眼未读数与最近回复 / @（每条带 aid 与 rpid），不占检查次数、没有回复额度。action=start：手动开一次互动检查，返回 inboxId、这次的条目、可用回复额度与章程（charter）——它有自己的每日检查次数与每轮回复额度，跟刷视频的轮次完全无关；收件箱为空时它直接收尾（nothing:true），什么也不用做。自动运行时不用调它：bili_round 返回 mode=inbox 时已经替你开好了同一次检查。action=finish：收尾（带 inboxId）。手动检查（manual=true）会跳过每日次数与最小间隔，但一天最多 6 次。go=false 时本次直接结束，把 reason 用一句话说明即可。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "start",
+              "finish",
+              "read"
+            ],
+            "description": "start=开一次互动检查；finish=收尾；read（或缺省）=只读看一眼"
+          },
+          "inboxId": {
+            "type": "string",
+            "description": "action=finish 时必填：action=start 返回的 inboxId 原样回传。不带会返回 inbox_round_required；对不上号返回 inbox_round_mismatch（说明这一次检查已经被接管或作废，停手即可）。"
+          },
+          "manual": {
+            "type": "boolean",
+            "description": "action=start 时：使用者亲口说「现在看看谁回了我」才传 true——绕过每日检查次数与最小间隔（仍然受每日回复条数限制，也不占自动检查次数），但一天最多手动开 6 次。定时任务不要传。"
+          },
+          "note": {
+            "type": "string",
+            "description": "action=finish 时：一句话说明这一轮（例如「只回了一条，其余不值得回」）"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "approval": "auto"
+    },
+    {
+      "name": "bili_verify",
+      "description": "复核最近发过的评论现在是否公开可见（接口回“发送成功”不等于别人看得见：新号或被风控会压审）。**自己看得见也不等于别人看得见**——审核中或被限流的评论只对发布者本人放行，所以这里会查两遍：用登录态一遍、不带登录态一遍，只有匿名那遍也查得到才算公开；只有你查得到时会明确写「别人看不到」。只写“没查到”，绝不写“没发出去”。发出不到 90 秒的评论会标成「刚发出，还没查」——那会儿它还在审核队列里，查了也不作数。结果按每条评论自己那天写回日报的「评论复核」一节（跨天复核不会混进今天的日报）。发过评论的轮次最后调一次。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12,
+            "description": "这一次最多**真去查**几条，缺省 6（7 天内已确认可见的走缓存、刚发出不到 90 秒的标成「还没查」，这两种不发请求，也不占这个名额）"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "刚发出不到 90 秒的也要照查（一般不用传；正常复核等一会儿再调即可）"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "approval": "auto"
+    },
+    {
+      "name": "bili_config",
+      "description": "读或改插件设置（关键词、排除词、每日条数、时段配额 segments、日报形态、评论 / 私信 / 互动轮配额等）。不带参数只读；带 set 只改给出的字段，其余保持不变，返回合并后的完整设置。打开任何一个「会对外动起来 / 开始花钱」的开关——自动评论、投递方式从关闭改为私信、把「每天最多几条私信」（dmPerDay，0–5，默认 2）从 0 改成正数、填上收藏夹、打开「允许回复别人的追问」、把「每天最多检查几次」从 0 改成正数——都需要 confirm=true（代表用户本人同意）；这些开关只该由使用者自己打开。action=logout 清除本机登录凭证，同样需要 confirm=true。时段由使用者自己配（每一段各自算轮次）；不要替他改时段，除非他明确说了时间。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "logout"
+            ],
+            "description": "logout=清除本机 B站 凭证（需要 confirm=true）"
+          },
+          "set": {
+            "type": "object",
+            "description": "要改的字段子集，例如 {\"keywords\":[\"星舰\"],\"perDay\":3}",
+            "properties": {
+              "keywords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "excludeWords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "searchSort": {
+                "type": "string",
+                "enum": [
+                  "pubdate",
+                  "totalrank",
+                  "click",
+                  "dm"
+                ]
+              },
+              "searchPages": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "fetchPerRound": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 30
+              },
+              "perDay": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 40
+              },
+              "segments": {
+                "type": "array",
+                "maxItems": 6,
+                "description": "时段配额：每一段是一个一天之内的左闭右开时段 + 这一段最多跑几轮（1–6）。各段独立记账，互不吃额度。不可跨零点（要跨就拆两段），也不可重叠；不合法与重叠的段会被丢弃。例如 [{start:\"06:00\",end:\"10:00\",rounds:1},{start:\"18:00\",end:\"24:00\",rounds:1}] = 早晚各一轮。",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "start": {
+                      "type": "string",
+                      "description": "开始时刻 HH:MM（本机时区）"
+                    },
+                    "end": {
+                      "type": "string",
+                      "description": "结束时刻 HH:MM，必须晚于 start；24:00 表示当天结束"
+                    },
+                    "rounds": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 6,
+                      "description": "这一段最多自动跑成几轮"
+                    }
+                  },
+                  "required": [
+                    "start",
+                    "end",
+                    "rounds"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "manualMax": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "manualCooldownMin": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 240
+              },
+              "reportLevel": {
+                "type": "string",
+                "enum": [
+                  "full",
+                  "brief",
+                  "off"
+                ]
+              },
+              "autoComment": {
+                "type": "boolean"
+              },
+              "commentPerRound": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 20
+              },
+              "mentionName": {
+                "type": "string"
+              },
+              "commentLength": {
+                "type": "string",
+                "enum": [
+                  "short",
+                  "medium",
+                  "long"
+                ]
+              },
+              "dmMode": {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "only",
+                  "both"
+                ]
+              },
+              "dmUid": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "replyToComments": {
+                "type": "boolean",
+                "description": "允许回复别人的追问（互动轮的总开关，必须同时把 inboxChecksPerDay 设为大于 0）"
+              },
+              "replyPerRound": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 5,
+                "description": "每一次互动检查最多回复几条"
+              },
+              "replyPerDay": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 40,
+                "description": "每天最多回复几条（账号安全上限，0 = 不限）"
+              },
+              "inboxChecksPerDay": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 48,
+                "description": "每天最多自动检查几次收件箱（0 = 不自动检查）。次数和间隔独立于刷视频的轮次：刷视频的时段配额跑满了，回复检查照样能来。两条车道共用同一条自动化任务（schedule/precheck.mjs），这一拍做哪件由插件判。"
+              },
+              "inboxMinGapMin": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 720,
+                "description": "两次互动检查之间至少隔几分钟"
+              },
+              "favFolderId": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "personaPrompt": {
+                "type": "string",
+                "description": "写评论时的口吻提示（可选）"
+              }
+            },
+            "additionalProperties": false
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "开启任何「会对外动起来或开始花钱」的开关时必须是 true，表示用户本人同意：自动评论、投递方式从关闭改为私信 / 评论+私信、填上收藏夹、打开「允许回复别人的追问」、把「每天最多检查几次」从 0 改成正数。退出登录同样需要 true。"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "approval": "each-call"
+    },
+    {
+      "name": "open_view",
+      "description": "打开刷B站 的交互页面。intent=report 看日报（可带 date），intent=cards 看带封面的卡片墙（可筛选/搜索/翻页），intent=library 看判重记录，intent=schedule 请 Cindy 打开「新建自动化」面板（预填**唯一那条**「刷B站 · 自动运行」任务——每 30 分钟一拍，真跑不跑由前置检查脚本决定——需要用户自己点保存），intent=schedule-inbox 打开同一个面板、同一条任务（1.5.0 起刷视频与回复共用一条，没有第二条可建了）。用户说“看看日报”“打开刷B站”“设成每天自动刷”“帮我盯着回复”时用它。登录不在卡片里：要登录请让用户打开插件设置页的「登录」页签（扫码或粘贴 Cookie）。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "intent": {
+            "type": "string",
+            "enum": [
+              "report",
+              "cards",
+              "library",
+              "schedule",
+              "schedule-inbox"
+            ],
+            "description": "要打开哪一屏"
+          },
+          "date": {
+            "type": "string",
+            "description": "intent=report / cards 时要看哪一天，格式 YYYY-MM-DD，缺省今天"
+          }
+        },
+        "required": [
+          "intent"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "view_data",
+      "description": "由页面调用：读取页面要显示的数据（日报 report / 卡片墙 cards / 判重表 library / 收藏夹 folders）。模型不要调用——要看什么就用 open_view。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "report",
+              "library",
+              "cards",
+              "folders"
+            ]
+          },
+          "date": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "mcpApps": {
+    "ui": {
+      "resources": [
+        {
+          "uri": "ui://cindy-bili-scroll/v1",
+          "file": "ui/page.html",
+          "prefersBorder": true,
+          "csp": {
+            "connectDomains": [],
+            "resourceDomains": [
+              "https://*.hdslb.com",
+              "https://i0.hdslb.com",
+              "https://i1.hdslb.com",
+              "https://i2.hdslb.com"
+            ]
+          }
+        }
+      ],
+      "tools": {
+        "open_view": {
+          "resourceUri": "ui://cindy-bili-scroll/v1",
+          "visibility": [
+            "model"
+          ]
+        },
+        "view_data": {
+          "visibility": [
+            "app"
+          ]
+        }
+      }
+    }
+  }
+}
