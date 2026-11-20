@@ -1,6 +1,10 @@
 Third-party notices for the cindy-bili-scroll plugin
 ===============================================
 
+The plugin as a whole is distributed under the GNU Affero General Public
+License, version 3 or later - see LICENSE. The third-party material described
+below keeps its own licence, as stated in each section.
+
 qrcode-generator 1.4.4
 ----------------------
 Shipped as ui/qrcode.js and loaded by the settings page to draw the Bilibili
