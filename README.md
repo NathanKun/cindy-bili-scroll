@@ -1,4 +1,6 @@
-# cindy-bili-scroll (刷B站)
+# cindy-bili-scroll
+
+**English** · [简体中文](README.zh-CN.md)
 
 Scrolls Bilibili for you on a schedule: browse the home feed or search your keywords → read subtitles to decide what is worth watching → write a Markdown daily report. Optionally leave one comment that @-mentions you, favorite the video, or deliver the report by direct message — all according to your settings.
 
@@ -341,6 +343,6 @@ Run all of them after touching `main.js`, the gate, or the charter. `tests/test-
 
 ## License and provenance
 
-- This plugin: MIT, see `LICENSE`.
-- Derived from [c1overzz/dsh-bili-scroll](https://github.com/c1overzz/dsh-bili-scroll) (MIT).
+- This plugin: **AGPL-3.0-or-later**, see `LICENSE`.
+- Derived from [c1overzz/dsh-bili-scroll](https://github.com/c1overzz/dsh-bili-scroll) (MIT). The material taken from that project stays available under the MIT License; the combined work is distributed under the AGPL above, with that notice kept — the two are compatible in that direction.
 - `ui/qrcode.js` ships [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4 (MIT, Copyright (c) 2009 Kazuhiko Arase) for the settings page's login QR code. See `NOTICE`.

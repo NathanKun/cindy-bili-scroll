@@ -1,5 +1,7 @@
 # 刷B站（cindy-bili-scroll）
 
+[English](README.md) · **简体中文**
+
 替你在 B站上刷一轮：刷首页推荐或按关键词搜索 → 读字幕判断值不值得看 → 写一份 Markdown 日报；按你的设置决定要不要留一条评论并 @ 你、收藏、私信投递。
 
 另有一条**回复车道**：只处理谁回复了你的评论、谁 @ 了你。它有自己的检查次数和回复额度，和刷视频那条车道互不吃额度。1.5.0 起两条车道共用**一条**自动化任务：闸门只判「这一拍要不要叫模型」，做哪件由插件判。
@@ -355,6 +357,6 @@ node tests/gate-selftest/run.mjs  # 六个固定闸门场景；传绝对路径�
 
 ## 出处与许可
 
-- 本插件：MIT，见 `LICENSE`。
-- 衍生自 [c1overzz/dsh-bili-scroll](https://github.com/c1overzz/dsh-bili-scroll)（MIT）。
+- 本插件：**AGPL-3.0-or-later**，见 `LICENSE`。
+- 衍生自 [c1overzz/dsh-bili-scroll](https://github.com/c1overzz/dsh-bili-scroll)（MIT）。取自该项目的部分仍以 MIT 提供；整体以 AGPL-3.0 分发，那份声明一并保留——这个方向的兼容是成立的。
 - 随包 `ui/qrcode.js` 是 [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 1.4.4（MIT，Copyright (c) 2009 Kazuhiko Arase），给设置页画登录二维码用。见 `NOTICE`。
