@@ -1,9 +1,27 @@
-Third-party notices for the cindy-bili-scroll plugin
-===============================================
+Notices for the cindy-bili-scroll plugin
+========================================
 
-The plugin as a whole is distributed under the GNU Affero General Public
-License, version 3 or later - see LICENSE. The third-party material described
-below keeps its own licence, as stated in each section.
+cindy-bili-scroll
+Copyright (C) 2026 cindy-bili-scroll contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. It comes without any warranty, to the extent permitted by law.
+
+LICENSE holds the AGPL text unmodified, so that GitHub and licence scanners
+recognise it as AGPL-3.0.
+
+Third-party material keeps its own licence:
+
+  dsh-bili-scroll (https://github.com/c1overzz/dsh-bili-scroll) - MIT.
+  This plugin is a port of that project. The material coming from it stays
+  available under the MIT License; MIT is one-way compatible with the AGPL, so
+  the combined work is distributed under the AGPL above and that notice is
+  kept.
+
+The third-party notices follow.
+----------------------------------------
 
 qrcode-generator 1.4.4
 ----------------------
