@@ -1777,6 +1777,30 @@ function today() {
   cleanState();
   inboxNext = null;
 
+  console.log('# 68. autoKeyword：默认关（还是关键词框的老行为），开了才把「搜什么」交给伙伴');
+  r = await call('bili_config', { set: { autoKeyword: false } });
+  assert(r.ok && body(r).config.autoKeyword === false, '默认 false = 用关键词框');
+  r = await call('bili_config', { set: { autoKeyword: true } });
+  assert(r.ok && body(r).config.autoKeyword === true, '改这个开关不需要 confirm：它不对外说话、不花钱');
+  cleanState();
+  r = await call('bili_round', {});
+  assert(body(r).go === true, '开得起来');
+  assert(body(r).config.autoKeyword === true, 'bili_round 把开关交给了模型');
+  assert(body(r).charter.includes('`autoKeyword: true`'), '章程里有「搜什么由你定」那一支');
+  assert(body(r).charter.includes('`autoKeyword: false` 且 `keywords` 为空'),
+    '章程里保住了「关键词留空 = 刷推荐流」那一支');
+  await call('bili_round', { action: 'finish', roundId: body(r).roundId, status: 'nothing' });
+  await call('bili_config', { set: { autoKeyword: false } });
+
+  console.log('# 69. 日报开头与私信开头各带一行「本轮搜了 X」');
+  cleanState();
+  r = await call('bili_round', {});
+  const charter69 = String(body(r).charter || '');
+  assert(charter69.includes('> 本轮搜了「X」'), '日报：第一次 append 先写这一行');
+  assert(charter69.includes('> 本轮刷了首页推荐'), '刷推荐流时有对应的写法（不是留空）');
+  assert(charter69.includes('正文第一行写 `本轮搜了「X」`'), '私信：正文第一行也要写');
+  await call('bili_round', { action: 'finish', roundId: body(r).roundId, status: 'nothing' });
+
   console.log('\nALL PASS');
 })().catch((error) => {
   console.error(error);

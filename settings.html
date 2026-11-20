@@ -99,10 +99,11 @@
 </fieldset>
 
 <fieldset id="pane-daily" aria-label="日常" hidden>
+  <div class="row inline"><input type="checkbox" id="autoKeyword"><label for="autoKeyword">搜什么由伙伴自己决定（忽略下面的关键词框）</label></div>
   <div class="row">
     <label for="keywords">关键词（一行一个，留空就刷首页推荐）</label>
     <textarea id="keywords" placeholder="星舰&#10;编译器原理"></textarea>
-    <p class="hint">填了就按关键词搜索，一轮只搜一个词；留空则刷你这个账号的首页推荐流。</p>
+    <p class="hint">填了就按你给的词搜，一轮只搜一个词；留空则刷你这个账号的首页推荐流。上面那个开关打开时，这一栏不生效。</p>
   </div>
   <div class="row">
     <label for="excludeWords">排除词（一行一个）</label>

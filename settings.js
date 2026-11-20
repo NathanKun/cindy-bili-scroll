@@ -9,6 +9,7 @@
 
 var DEFAULTS = {
   keywords: [],
+  autoKeyword: false,
   excludeWords: [],
   searchSort: 'pubdate',
   searchPages: 2,
@@ -37,7 +38,7 @@ var DEFAULTS = {
 
 var TEXT_KEYS = ['personaPrompt', 'mentionName'];
 var LIST_KEYS = ['keywords', 'excludeWords'];
-var BOOL_KEYS = ['autoComment', 'replyToComments'];
+var BOOL_KEYS = ['autoKeyword', 'autoComment', 'replyToComments'];
 var NUMBER_KEYS = [
   'searchPages', 'fetchPerRound', 'perDay', 'manualMax', 'manualCooldownMin',
   'commentPerRound', 'dmUid', 'dmPerDay', 'replyPerRound', 'replyPerDay', 'inboxChecksPerDay', 'inboxMinGapMin',

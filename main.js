@@ -15,6 +15,9 @@
 
 const DEFAULT_CONFIG = {
   keywords: [],
+  // 谁来决定搜什么。false = 用下面 keywords 输入框（留空就刷首页推荐，1.6.4 之前的行为）；
+  // true = 由伙伴按它对使用者的了解自己定搜索词。
+  autoKeyword: false,
   excludeWords: [],
   searchSort: 'pubdate',
   searchPages: 2,
@@ -93,9 +96,10 @@ const CHARTER_LINES = [
   '',
   '## 一轮要做的事（顺序不要乱）',
   '',
-  '1. **先决定「看哪儿」**（`bili_round` 会告诉你设置里填没填关键词）：',
-  '   - 关键词为空 ⇒ `bili_browse(source="recommend")` 刷这个账号的首页推荐流，从返回里**随机挑几条**，不要固定取前 N 条；娱乐、带货、直播切片直接跳过。',
-  '   - 填了关键词 ⇒ `bili_browse(source="search", keyword="…")`，一轮只搜一个词。',
+  '1. **先决定「看哪儿」**（看 `bili_round` 返回的 `config.autoKeyword` 与 `config.keywords`）：',
+  '   - `autoKeyword: true` ⇒ **搜什么由你定**：按你对这个人的了解挑一个他这几天会想看的方向，写成具体的搜索词（`星舰 第七次试飞`，不是 `科技`），`bili_browse(source="search", keyword="…")`，一轮只搜一个词。记得他看过什么、否定过什么，顺着那个走；别把同一个词每轮搜一遍。确实没有方向才改用推荐流。',
+  '   - `autoKeyword: false` 且 `keywords` 非空 ⇒ `bili_browse(source="search", keyword="…")`，从里面挑一个，一轮只搜一个词。',
+  '   - `autoKeyword: false` 且 `keywords` 为空 ⇒ `bili_browse(source="recommend")` 刷这个账号的首页推荐流，从返回里**随机挑几条**，不要固定取前 N 条；娱乐、带货、直播切片直接跳过。',
   '2. **判重**：先 `bili_seen(limit=40)` 看这个插件刷过什么，出现过的跳过；拿不准就 `bili_seen(bvid="BV…")` 单独查一个。',
   '   - 判重表**读不到**（`bili_seen` 报错，或 `bili_round` 返回 `seenUnavailable:true`）⇒ 不当成「没记录过」：在报告里写一行「判重表读不到」，并且**这一轮不发评论**（宁可少发）。',
   '   - 判重表**是空的**（「判重表里还没有记录」）不是故障：那是刚装、刚清过，照常往下走。',
@@ -105,12 +109,13 @@ const CHARTER_LINES = [
   '   - **subtitle.failed=true**：字幕是拉取失败（网络 / 风控），不是没有字幕。别统计成「无字幕」，可以重试一次，再失败就记「跳过（字幕拉取失败）」。',
   '   - 字幕是空的 / 只有一行署名 ⇒ 这条没有语音，记「跳过（无语音）」，不要重试、不要换参数反复试。',
   '   - **字幕被截断**（正文第一行写着「中间省略了」）⇒ 你读到的是开头和结尾，中间那段没读。据此判断值不值得看没问题，但**不要声称中间讲了什么**；报告里也不要漏掉这个事实。',
-  '4. **写给使用者看的日报**：挑中的每条用 `bili_report_append` 写一段，**这一段第一行固定写成 `### BV号`**（顶格，例 `### BV1xxxxxxxxx`），下一行写：',
+  '4. **写给使用者看的日报**：挑中的每条用 `bili_report_append` 写一段，**每一条的第一行固定写成 `### BV号`**（顶格，例 `### BV1xxxxxxxxx`），下一行写：',
   '   `标题 / UP / 时长 / 播放量` —— 就用视频信息里的时长（`18:32`）和播放量（`30.1万`），`/` 两边各留一个空格。链接不用写，插件按 BV 号自己拼。再往下是：`**档位**：…`、为什么值得（两三句）、你自己的一句话。',
   '   - `**档位**：值得看 | 可以看 | 不值当` —— 只能这三个词。',
   '   - 写「值得看」必须读过字幕；手里只有标题、时长、简介这类表层信息 ⇒ 最多写「可以看」。',
   '   - 插件数 `### BV` 的行数来对账每日额度：**只挑中的才写这一行**，提到过 / 跳过 / 评论区别人问起的不要加。',
   '   - 日报形态是 `off` 时 `bili_report_append` 会拒绝写入：那种情况下改在判重表里记，见第 5 步。',
+  '   - **开头带一行「本轮搜了 X」**：这一轮**第一次**调 `bili_report_append` 时，在这一段最前面先写一行 `> 本轮搜了「X」`（X 就是第 1 步你实际用的那个搜索词；刷的是推荐流就写 `> 本轮刷了首页推荐`），空一行再开始写条目。这一行是给使用者看你搜了什么的，后面几次 append 不用重复。',
   '5. **记判重**：每条看过的都调 `bili_seen({record:{bvid,title,up,status,note}})`，status 用 `挑了` / `跳过`。日报形态是 `off` 时，`挑了` 就是额度的唯一依据，**必须记**；那种形态下它和日报里的 `### BV` 一样受额度与「手动一轮最多几条」管，超了会回 `QUOTA_EXCEEDED`，那条就改记 `跳过`。',
   '   - **`note` 是写给下一轮的你自己**（一句话，≤200 字）：这条到底讲了什么、为什么跳、这个 UP 的成色如何。要具体到能据此复判，不要写「一般」「还行」「不错」这种放之四海皆准的字。',
   '   - 下一轮开头 `bili_round` 会带回 `memory`（最近的笔记 + 每个 UP 的上次判断），`bili_browse` 也会给见过的视频挂上 `note` / `upNote`。**那是你自己以前的判断，不是别人说的**：权重高于标题和简介，但低于这一轮真正读到的字幕。跟旧笔记冲突时按这次的判，并在新笔记里写清为什么改——否则下一轮会看到两个互相矛盾的自己。',
@@ -135,6 +140,7 @@ const CHARTER_LINES = [
   '',
   '- **一条私信 ≤ 500 字。**实测 490 字能发、再长直接报错（code 21007）。宁可少写两条视频，也不要超。',
   '- **一轮只发一条私信**，把这一轮值得的都塞进去：每条「标题 + 链接 + 一句话理由」，条目之间空行隔开。私信里不要 @ 任何人。',
+  '- **正文第一行写 `本轮搜了「X」`**（X 是第 1 步实际用的那个搜索词；刷的是推荐流就写 `本轮刷了首页推荐`），空一行再列条目。这一行也算在 500 字里。',
   '- **一天发几条由使用者的设置定**（「每天最多几条私信」，默认 2，0 = 不发）。`bili_round` 的 `budget.dm` 已经把这个算好了：它是 0 就是这一轮不该发（今天的份额用完了、或者设置关着），不要换别的工具绕，也不要问使用者要不要提高上限。',
   '- 私信用**人话**：不许出现 dmMode / only / both / 判据 / 白名单 / prompt / token / 复核 这类设置名或内部术语，不许解释插件怎么工作。自查一遍「转给一个完全不懂插件的朋友，他看得懂吗」。',
   '- 发失败（风控 / 没互关 / 接口报错）就如实写进报告，不要重试轰炸。',
@@ -153,6 +159,8 @@ const CHARTER_LINES = [
   '',
   '```markdown',
   '# B站日报 · 2026-11-15',
+  '',
+  '> 本轮搜了「星舰 第七次试飞」',
   '',
   '### BV1tKs76bEyi',
   '星舰第 15 飞：一个视频看懂首次二级回收 / 新世纪的旅行者 / 18:32 / 30.1万播放',
@@ -471,7 +479,7 @@ function normalizeConfig(raw) {
     const value = String(stored[key]);
     config[key] = ENUMS[key].includes(value) ? value : DEFAULT_CONFIG[key];
   }
-  for (const key of ['autoComment', 'replyToComments']) {
+  for (const key of ['autoKeyword', 'autoComment', 'replyToComments']) {
     if (stored[key] === undefined || stored[key] === null) continue;
     config[key] = Boolean(stored[key]);
   }
@@ -2450,6 +2458,7 @@ async function reportStart(args, msg, outer) {
     window,
     config: {
       keywords: config.keywords,
+      autoKeyword: config.autoKeyword,
       excludeWords: config.excludeWords,
       searchSort: config.searchSort,
       searchPages: config.searchPages,

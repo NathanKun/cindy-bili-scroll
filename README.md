@@ -8,7 +8,7 @@ Ported from [c1overzz/dsh-bili-scroll](https://github.com/c1overzz/dsh-bili-scro
 
 ## What it does
 
-1. **Collect candidates** — empty keyword list means your own home recommendation feed; otherwise it searches one keyword per round. Videos matching your exclude words are dropped.
+1. **Collect candidates** — with the "companion picks the keyword" toggle on, the companion decides each round's search term; with it off, it searches one of your keywords per round, and an empty list means your own home recommendation feed. Videos matching your exclude words are dropped.
 2. **Deduplicate** — it reads its own ledger (`seen.jsonl`), skips anything already seen, and gets back the verdicts it wrote for itself in earlier rounds (see "Video memory" below).
 3. **Read** — it reads the subtitle transcript of each candidate. No subtitle track means "skipped (no subtitle)"; it never guesses.
 4. **Write the report** — one block per pick in `out/<date>.md`, whose first line is always `### BVnumber`. The plugin counts those lines to enforce the daily quota. The card's 卡片 tab renders it as a wall of cards with covers and verdict tags, filterable by 值得看 / 可以看 / 不值当 and searchable by title.
@@ -211,7 +211,8 @@ If you are coming straight from 1.3.x as well:
 
 | Tab | Field | Meaning |
 | --- | --- | --- |
-| 日常 | keywords / exclude words | one per line; empty keywords = home feed |
+| 日常 | companion picks the keyword | on = the companion decides each round's search term, the keyword box is ignored; off = use the keyword box |
+| 日常 | keywords / exclude words | one per line; with the toggle off, empty keywords = your home recommendation feed |
 | 日常 | picks per day | 0 disables the automatic cap |
 | 日常 | segment quotas | rows of `start – end × rounds` (1–6), each segment counted separately and never eating another's budget. Half-open, no wrapping, no overlap; invalid or overlapping segments are dropped. Default is one `00:00–24:00 ×1` segment; "早晚各一轮" fills in 06:00–10:00 + 18:00–24:00 |
 | 日常 | report shape | full / brief / off — with off, the quota is counted from the `挑了` rows in the ledger, and the daily quota plus the manual per-round cap are enforced there too |
